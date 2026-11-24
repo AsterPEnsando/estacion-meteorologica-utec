@@ -1,0 +1,18 @@
+__pycache__/
+.venv/
+.deps/
+data/*.db*
+data/settings.json
+data/settings.tmp
+*.log
+.env
+.env.*
+!.env.example
+respaldo/
+*.json.key
+serviceAccount*.json
+.claude/
+
+# No publicar
+CONTEXTO_PROYECTO_SE.md
+AH.HTML

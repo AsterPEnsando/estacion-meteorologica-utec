@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Estación Meteorológica · UTEC</title>
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .remote-note{font-size:12px;color:var(--muted);margin:4px 0 0}
+  .metric.offline{opacity:.55}
+  .platform-chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--soft)}
+  .setup{max-width:640px;margin:48px auto;padding:24px;line-height:1.5}
+  .setup code{background:var(--soft);padding:1px 5px;border-radius:4px}
+</style>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('weather-theme')||'light'}catch(e){}</script>
+<script defer src="vendor/chart.umd.js"></script>
+<script defer src="config.js"></script>
+<script defer src="app.js"></script>
+</head>
+<body>
+<aside class="sidebar"><a class="brand" href="#overview"><span class="brand-mark">M<span>°</span></span><span>METEO<span class="brand-sub">ESTACIÓN UTEC</span></span></a><div class="nav-label">ESPACIO DE TRABAJO</div><nav><a href="#overview" class="active"><span data-icon="grid"></span> Vista general</a><a href="#charts"><span data-icon="chart"></span> Análisis ambiental</a><a href="#history"><span data-icon="history"></span> Historial</a><a href="#system"><span data-icon="cpu"></span> Estado del sistema</a></nav><div class="sidebar-bottom"><span class="hardware-dot"></span> Estación inalámbrica<p>ATmega328P · PSoC 5LP<br>HC-05 → colector → Firebase</p><span class="version">MONITOREO REMOTO · solo lectura</span></div></aside>
+<main id="overview">
+<header><div class="breadcrumb">Estación UTEC <span>/</span> Vista remota</div><div class="header-actions"><span id="clock"></span><button id="theme" class="icon-button" aria-label="Cambiar tema"><span data-icon="moon"></span></button></div></header>
+<section class="page-heading"><div><div class="eyebrow">OBSERVATORIO AMBIENTAL</div><h1>Estación Meteorológica</h1><p>Vista remota en tiempo real · Datos publicados por el colector local</p></div></section>
+<div class="connection-bar"><div><span id="connection-dot" class="dot"></span><strong id="connection">Consultando…</strong><span class="divider"></span><span id="platform-label">Plataforma: —</span></div><span id="last-received">Sin mediciones recibidas</span></div>
+<section class="section-title"><h2>Condiciones actuales</h2><span id="poll-label">Actualización automática</span></section>
+<section id="metrics" class="metrics" aria-label="Variables ambientales"></section>
+<section id="charts"><div class="section-title"><div><h2>Análisis ambiental</h2><p>Registros almacenados por el colector</p></div><div class="filters"><select id="platform" aria-label="Plataforma"><option value="all">Ambas plataformas</option><option value="atmega328p">ATmega328P</option><option value="psoc5lp">PSoC 5LP</option></select><select id="range" aria-label="Intervalo temporal"><option value="1">Última hora</option><option value="6">Últimas 6 horas</option><option value="24" selected>Últimas 24 horas</option><option value="168">Últimos 7 días</option></select><button class="button" id="refresh" aria-label="Actualizar historial"><span data-icon="refresh"></span></button></div></div><div id="chart-grid" class="chart-grid"></div></section>
+<section id="history" class="panel history"><div class="panel-heading"><div><h2>Historial de mediciones</h2><p id="history-description">Firebase Realtime Database</p></div><button id="export" class="button"><span data-icon="download"></span> Exportar CSV</button></div><div class="table-wrap"><table><thead><tr><th>Fecha / Hora ↓</th><th>Plataforma</th><th>AHT20 <small>°C</small></th><th>BMP280 <small>°C</small></th><th>Promedio <small>°C</small></th><th>Humedad <small>%</small></th><th>Presión <small>hPa</small></th><th>Luz <small>%</small></th><th>Lluvia</th></tr></thead><tbody id="rows"><tr><td colspan="9" class="empty">Cargando registros…</td></tr></tbody></table></div><div class="pagination"><span id="page-info">Sin registros</span><div><button id="prev" class="button">Anterior</button><button id="next" class="button">Siguiente</button></div></div></section>
+<section id="system" class="panel"><div class="panel-heading"><div><h2>Estado del sistema</h2><p>Colector local y nube</p></div><span data-icon="cpu"></span></div><div id="diagnostics" class="diagnostics"></div><p id="system-error" class="system-error" hidden></p><div class="system-footer"><span>HC-05 SPP <span class="muted">/</span> Python <span class="muted">/</span> Firebase <span class="muted">/</span> GitHub Pages</span><span>La luz es relativa (no lux); el FC-37 detecta humedad de placa, no mm/h.</span></div></section>
+<footer>Estación Meteorológica <span>Vista remota de solo lectura. El hardware se controla desde la laptop colectora.</span></footer>
+</main>
+<div id="toast" role="status" hidden></div>
+</body></html>

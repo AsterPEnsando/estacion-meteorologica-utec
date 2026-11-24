@@ -1,0 +1,15 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "estacion": {
+      ".read": true,
+      ".write": "auth != null && auth.uid === '40sQucJa7KQgRuEZgHy5MQAAE352'",
+      "history": {
+        "$ts": {
+          ".validate": "$ts.matches(/^[0-9]{13}$/) && newData.child('ts').isNumber() && newData.child('platform').isString()"
+        }
+      }
+    }
+  }
+}
