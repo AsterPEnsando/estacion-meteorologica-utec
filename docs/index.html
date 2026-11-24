@@ -1,33 +1,143 @@
 <!doctype html>
-<html lang="es" data-theme="light">
+<html lang="es">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Estación Meteorológica · UTEC</title>
-<link rel="stylesheet" href="css/styles.css">
-<style>
-  .remote-note{font-size:12px;color:var(--muted);margin:4px 0 0}
-  .metric.offline{opacity:.55}
-  .platform-chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--soft)}
-  .setup{max-width:640px;margin:48px auto;padding:24px;line-height:1.5}
-  .setup code{background:var(--soft);padding:1px 5px;border-radius:4px}
-</style>
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('weather-theme')||'light'}catch(e){}</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Estación Meteorológica UTEC</title>
+<meta name="description" content="Condiciones ambientales en tiempo real medidas por la estación meteorológica inalámbrica del curso de Sistemas Embebidos de UTEC.">
+<meta name="theme-color" content="#1d5fbf">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232a78d6'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/site.css">
+<script>try{var t=localStorage.getItem('weather-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <script defer src="vendor/chart.umd.js"></script>
 <script defer src="config.js"></script>
 <script defer src="app.js"></script>
 </head>
 <body>
-<aside class="sidebar"><a class="brand" href="#overview"><span class="brand-mark">M<span>°</span></span><span>METEO<span class="brand-sub">ESTACIÓN UTEC</span></span></a><div class="nav-label">ESPACIO DE TRABAJO</div><nav><a href="#overview" class="active"><span data-icon="grid"></span> Vista general</a><a href="#charts"><span data-icon="chart"></span> Análisis ambiental</a><a href="#history"><span data-icon="history"></span> Historial</a><a href="#system"><span data-icon="cpu"></span> Estado del sistema</a></nav><div class="sidebar-bottom"><span class="hardware-dot"></span> Estación inalámbrica<p>ATmega328P · PSoC 5LP<br>HC-05 → colector → Firebase</p><span class="version">MONITOREO REMOTO · solo lectura</span></div></aside>
-<main id="overview">
-<header><div class="breadcrumb">Estación UTEC <span>/</span> Vista remota</div><div class="header-actions"><span id="clock"></span><button id="theme" class="icon-button" aria-label="Cambiar tema"><span data-icon="moon"></span></button></div></header>
-<section class="page-heading"><div><div class="eyebrow">OBSERVATORIO AMBIENTAL</div><h1>Estación Meteorológica</h1><p>Vista remota en tiempo real · Datos publicados por el colector local</p></div></section>
-<div class="connection-bar"><div><span id="connection-dot" class="dot"></span><strong id="connection">Consultando…</strong><span class="divider"></span><span id="platform-label">Plataforma: —</span></div><span id="last-received">Sin mediciones recibidas</span></div>
-<section class="section-title"><h2>Condiciones actuales</h2><span id="poll-label">Actualización automática</span></section>
-<section id="metrics" class="metrics" aria-label="Variables ambientales"></section>
-<section id="charts"><div class="section-title"><div><h2>Análisis ambiental</h2><p>Registros almacenados por el colector</p></div><div class="filters"><select id="platform" aria-label="Plataforma"><option value="all">Ambas plataformas</option><option value="atmega328p">ATmega328P</option><option value="psoc5lp">PSoC 5LP</option></select><select id="range" aria-label="Intervalo temporal"><option value="1">Última hora</option><option value="6">Últimas 6 horas</option><option value="24" selected>Últimas 24 horas</option><option value="168">Últimos 7 días</option></select><button class="button" id="refresh" aria-label="Actualizar historial"><span data-icon="refresh"></span></button></div></div><div id="chart-grid" class="chart-grid"></div></section>
-<section id="history" class="panel history"><div class="panel-heading"><div><h2>Historial de mediciones</h2><p id="history-description">Firebase Realtime Database</p></div><button id="export" class="button"><span data-icon="download"></span> Exportar CSV</button></div><div class="table-wrap"><table><thead><tr><th>Fecha / Hora ↓</th><th>Plataforma</th><th>AHT20 <small>°C</small></th><th>BMP280 <small>°C</small></th><th>Promedio <small>°C</small></th><th>Humedad <small>%</small></th><th>Presión <small>hPa</small></th><th>Luz <small>%</small></th><th>Lluvia</th></tr></thead><tbody id="rows"><tr><td colspan="9" class="empty">Cargando registros…</td></tr></tbody></table></div><div class="pagination"><span id="page-info">Sin registros</span><div><button id="prev" class="button">Anterior</button><button id="next" class="button">Siguiente</button></div></div></section>
-<section id="system" class="panel"><div class="panel-heading"><div><h2>Estado del sistema</h2><p>Colector local y nube</p></div><span data-icon="cpu"></span></div><div id="diagnostics" class="diagnostics"></div><p id="system-error" class="system-error" hidden></p><div class="system-footer"><span>HC-05 SPP <span class="muted">/</span> Python <span class="muted">/</span> Firebase <span class="muted">/</span> GitHub Pages</span><span>La luz es relativa (no lux); el FC-37 detecta humedad de placa, no mm/h.</span></div></section>
-<footer>Estación Meteorológica <span>Vista remota de solo lectura. El hardware se controla desde la laptop colectora.</span></footer>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v2M5.6 5.6 7 7M3 12h2M17 7l1.4-1.4"/><path d="M8 12a4 4 0 0 1 7.5-1.9"/><path d="M8 20h9a3.5 3.5 0 0 0 0-7h-.5A5 5 0 0 0 7 14.5 2.8 2.8 0 0 0 8 20z"/></svg></span>
+      <span><b><span class="full">Estación Meteorológica</span><span class="short">Estación UTEC</span></b><small>UTEC · Sistemas Embebidos</small></span>
+    </a>
+    <div class="top-actions">
+      <span id="live" class="live"><i></i><span id="live-text">Conectando</span></span>
+      <button id="theme" class="icon-btn" aria-label="Cambiar tema"></button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="hero" class="hero" aria-live="polite">
+    <div class="hero-grid">
+      <div>
+        <div class="eyebrow">Condiciones actuales</div>
+        <div class="temp"><span id="hero-temp">--</span><sup>°C</sup></div>
+        <div id="hero-condition" class="condition">Esperando datos de la estación</div>
+        <div class="hero-meta">
+          <span>Máx <b id="hero-max">--</b></span>
+          <span>Mín <b id="hero-min">--</b></span>
+          <span id="hero-range-label">últimas 24 h</span>
+        </div>
+      </div>
+      <div id="hero-art" class="hero-art" aria-hidden="true"></div>
+    </div>
+    <div class="hero-foot">
+      <span class="chip"><i id="hero-dot"></i><span id="hero-platform">Sin plataforma activa</span></span>
+      <span id="hero-updated" class="updated"></span>
+    </div>
+  </section>
+
+  <div id="banner" class="banner" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span id="banner-text"></span>
+  </div>
+
+  <section class="tiles" aria-label="Variables ambientales">
+    <article class="card tile" id="t-hum">
+      <div class="tile-top">Humedad<span class="tile-ico" data-i="drop"></span></div>
+      <div class="tile-val"><span class="v">--</span><small>%</small></div>
+      <div class="meter hum"><i style="width:0"></i></div>
+      <div class="tile-sub s">Humedad relativa del aire</div>
+    </article>
+    <article class="card tile" id="t-pres">
+      <div class="tile-top">Presión<span class="tile-ico" data-i="gauge"></span></div>
+      <div class="tile-val"><span class="v">--</span><small>hPa</small></div>
+      <div class="tile-sub s">Presión atmosférica</div>
+    </article>
+    <article class="card tile" id="t-light">
+      <div class="tile-top">Luminosidad<span class="tile-ico" data-i="sun"></span></div>
+      <div class="tile-val"><span class="v">--</span><small>%</small></div>
+      <div class="meter"><i style="width:0"></i></div>
+      <div class="tile-sub s">Nivel de luz ambiental</div>
+    </article>
+    <article class="card tile" id="t-rain">
+      <div class="tile-top">Lluvia<span class="tile-ico" data-i="rain"></span></div>
+      <div class="tile-val"><span class="v">--</span></div>
+      <div class="tile-sub s">Sensor de precipitación</div>
+    </article>
+  </section>
+
+  <section class="section" id="tendencias">
+    <div class="section-head">
+      <div><h2>Tendencias</h2><p>Evolución de las mediciones registradas</p></div>
+      <div class="controls">
+        <div class="seg" id="range" role="group" aria-label="Periodo">
+          <button data-v="1">1 h</button><button data-v="6">6 h</button><button data-v="24" aria-pressed="true">24 h</button><button data-v="168">7 días</button>
+        </div>
+      </div>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-top">
+        <div class="seg" id="metric" role="tablist" aria-label="Variable">
+          <button data-v="temp_aht" aria-pressed="true">Temperatura</button><button data-v="humidity">Humedad</button><button data-v="pressure">Presión</button><button data-v="light_pct">Luz</button>
+        </div>
+        <div class="seg" id="platform" role="group" aria-label="Plataforma">
+          <button data-v="all" aria-pressed="true">Ambas</button><button data-v="atmega328p"><i style="background:var(--avr)"></i>ATmega328P</button><button data-v="psoc5lp"><i style="background:var(--psoc)"></i>PSoC 5LP</button>
+        </div>
+      </div>
+      <div class="chart-title" id="chart-title">Temperatura promedio del periodo</div>
+      <div class="chart-big" id="chart-big">--</div>
+      <div class="legend" id="legend"></div>
+      <div class="chart-box"><canvas id="chart" role="img" aria-label="Gráfica de tendencia"></canvas><div id="chart-empty" class="empty" hidden>Aún no hay registros en este periodo</div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><div><h2>Dos plataformas, una estación</h2><p>Los mismos sensores, medidos por dos microcontroladores distintos</p></div></div>
+    <div class="platforms">
+      <article class="card plat" style="--c:var(--avr)" id="p-atmega328p">
+        <div class="plat-head"><h3><i></i>ATmega328P</h3><span class="badge-live" hidden>Transmitiendo</span></div>
+        <p>Microcontrolador AVR de 8 bits programado en lenguaje ensamblador.</p>
+        <div class="plat-stats"><div><span>Registros</span><b class="n">--</b></div><div><span>Temp. media</span><b class="t">--</b></div><div><span>Última vez</span><b class="l">--</b></div></div>
+      </article>
+      <article class="card plat" style="--c:var(--psoc)" id="p-psoc5lp">
+        <div class="plat-head"><h3><i></i>PSoC 5LP</h3><span class="badge-live" hidden>Transmitiendo</span></div>
+        <p>Sistema en chip ARM Cortex-M3 de 32 bits programado en lenguaje C.</p>
+        <div class="plat-stats"><div><span>Registros</span><b class="n">--</b></div><div><span>Temp. media</span><b class="t">--</b></div><div><span>Última vez</span><b class="l">--</b></div></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="section card table-card" id="historial">
+    <div class="table-head">
+      <h2>Registro de mediciones</h2>
+      <button id="export" class="btn"><span data-i="download"></span>Descargar CSV</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Fecha y hora</th><th>Plataforma</th><th class="num">Temperatura</th><th class="num">Humedad</th><th class="num">Presión</th><th class="num">Luz</th><th>Lluvia</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="7" style="text-align:center;color:var(--ink-3)">Cargando registros…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="table-foot"><span id="page-info"></span><span><button id="prev" class="btn">Anterior</button> <button id="next" class="btn">Siguiente</button></span></div>
+  </section>
+
+  <footer>
+    <span><b>Estación Meteorológica UTEC</b> · Introducción a Sistemas Embebidos · 2026-2</span>
+    <span>Datos en tiempo real vía Bluetooth y Firebase</span>
+  </footer>
 </main>
-<div id="toast" role="status" hidden></div>
-</body></html>
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

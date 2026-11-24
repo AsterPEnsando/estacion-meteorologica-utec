@@ -1,74 +1,183 @@
-// Dashboard remoto (GitHub Pages). Solo lectura de Firebase Realtime Database por REST.
-// Estructura esperada (la escribe firebase_sync.py):
+// Estación Meteorológica UTEC · vista remota (GitHub Pages, solo lectura de Firebase por REST).
+// Estructura que escribe firebase_sync.py:
 //   <root>/live            {state, platform, heartbeat(ms servidor), latest{...}, demo}
-//   <root>/history/<ts_ms> {ts, timestamp, platform, temp_aht, temp_bmp, temp_avg, humidity, pressure, light, adc_max, light_pct, rain, rain_level, rain_adc}
-const CFG = Object.assign({root: 'estacion', pollSeconds: 4, offlineSeconds: 30}, window.ESTACION_CONFIG || {});
+//   <root>/history/<ts_ms> {ts, platform, temp_aht, temp_bmp, temp_avg, humidity, pressure, light, adc_max, light_pct, rain_level, ...}
+const CFG = Object.assign({root:'estacion', pollSeconds:4, offlineSeconds:30}, window.ESTACION_CONFIG || {});
 const BASE = String(CFG.databaseURL || '').replace(/\/+$/, '') + '/' + CFG.root;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PLAT = {atmega328p:'ATmega328P', psoc5lp:'PSoC 5LP'};
+const RAIN = ['Sin lluvia','Lluvia moderada','Lluvia intensa'];
+const METRICS = {
+  temp_aht:{name:'Temperatura', unit:'°C', d:1},
+  humidity:{name:'Humedad', unit:'%', d:0},
+  pressure:{name:'Presión', unit:'hPa', d:1},
+  light_pct:{name:'Luminosidad', unit:'%', d:0},
+};
+const num = (v, d=1) => v == null ? '--' : Number(v).toLocaleString('es-PE', {minimumFractionDigits:d, maximumFractionDigits:d});
+const cell = (v, d, u) => v == null ? '<span style="color:var(--ink-3)">—</span>' : `${num(v, d)} ${u}`;
+const clock = ms => new Date(ms).toLocaleTimeString('es-PE', {hour:'2-digit', minute:'2-digit'});
+const ago = ms => { const s = Math.max(0, (Date.now()-ms)/1000); return s < 60 ? 'hace unos segundos' : s < 3600 ? `hace ${Math.round(s/60)} min` : s < 86400 ? `hace ${Math.round(s/3600)} h` : new Date(ms).toLocaleDateString('es-PE', {day:'numeric', month:'short'}); };
+const stamp = r => r.ts ?? Date.parse(r.timestamp);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function toast(m){ $('toast').textContent = m; $('toast').hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => $('toast').hidden = true, 3500); }
 
-const paths={grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',chart:'M3 3v18h18 M6 15l5-5 4 3 6-8',history:'M3 11a9 9 0 1 1 2 7 M3 4v7h7 M12 7v5l3 2',cpu:'M6 6h12v12H6z M9 9h6v6H9z M9 2v4 M15 2v4 M9 18v4 M15 18v4 M2 9h4 M2 15h4 M18 9h4 M18 15h4',moon:'M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11',sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l1 1 M18 18l1 1 M5 19l1-1 M18 6l1-1',refresh:'M20 7a9 9 0 0 0-15-2L2 8 M2 2v6h6 M4 17a9 9 0 0 0 15 2l3-3 M16 16h6v6',download:'M12 3v12 M7 10l5 5 5-5 M4 16v5h16v-5',thermometer:'M9 14.5V5a3 3 0 0 1 6 0v9.5a5 5 0 1 1-6 0 M12 8v9 M12 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4',drop:'M12 2C9 7 4 11 4 15a8 8 0 0 0 16 0c0-4-5-8-8-13z',pressure:'M4 18a9 9 0 1 1 16 0 M7 18h10 M12 14l4-5 M5 10l2 1 M10 5v2 M17 7l-1 2',cloud:'M6 18a5 5 0 1 1 1-10 6 6 0 0 1 11 2 4 4 0 0 1 0 8z',rain:'M5 15a4 4 0 1 1 2-8 6 6 0 0 1 11 2 3 3 0 0 1 1 6 M8 18l-1 3 M13 18l-1 3 M18 18l-1 3'};
-const icon=n=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[n]||paths.grid}"/></svg>`;
-document.querySelectorAll('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon));
-const $=id=>document.getElementById(id);
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const PLATFORMS={atmega328p:'ATmega328P',psoc5lp:'PSoC 5LP'}, COLORS={atmega328p:'#3b82f6',psoc5lp:'#f59e0b'}, RAIN=['Seco','Moderado','Intenso'];
-const fmt=(v,d=1)=>v==null?'—':Number(v).toLocaleString('es-PE',{minimumFractionDigits:d,maximumFractionDigits:d});
-const when=ms=>ms?new Date(ms).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
-const stamp=r=>r.ts??Date.parse(r.timestamp);
-function toast(m){$('toast').textContent=m;$('toast').hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>$('toast').hidden=true,4500)}
-async function get(path,query=''){const res=await fetch(`${BASE}/${path}.json${query}`,{cache:'no-store'});if(!res.ok)throw Error(`Firebase respondió ${res.status}`);return res.json()}
+// ---- Íconos ----
+const ICONS = {
+  drop:'<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  gauge:'<path d="M4 17a8 8 0 1 1 16 0"/><path d="m12 13 4-4"/><circle cx="12" cy="14" r="1.5"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  rain:'<path d="M7 15a4 4 0 1 1 .5-8 5.5 5.5 0 0 1 10.4 1.5A3.5 3.5 0 0 1 17.5 15"/><path d="m9 18-1 2M13 18l-1 2M17 18l-1 2"/>',
+  download:'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  moon:'<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
+};
+const icon = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>`;
+document.querySelectorAll('[data-i]').forEach(el => el.innerHTML = icon(el.dataset.i));
 
-// ---- Tarjetas ----
-const specs=[['temp_aht','Temperatura ambiental','°C','thermometer','AHT20 · Temperatura principal'],['humidity','Humedad relativa','%','drop','AHT20 · Humedad ambiental'],['pressure','Presión atmosférica','hPa','pressure','BMP280 · Presión absoluta'],['light_pct','Intensidad de luz','%','sun','Promedio 3 LDR · % del ADC, no lux'],['rain_level','Estado de lluvia','','cloud','FC-37 · Humedad superficial de placa'],['temp_avg','Temperatura promedio','°C','thermometer','Media AHT20 y BMP280']];
-$('metrics').innerHTML=specs.map(([k,n,u,ic,note])=>`<article class="metric" id="metric-${k}"><div class="metric-top"><span>${n}</span><span class="metric-icon">${icon(ic)}</span></div><div class="metric-value ${k==='rain_level'?'rain':''}"><span class="value">—</span><small>${u}</small></div><div class="metric-bottom"><span class="updated-time">Esperando medición</span><span class="trend"></span></div><div class="metric-note">${note}</div></article>`).join('');
-function renderCards(r,online){specs.forEach(([k,,,ic])=>{const card=$('metric-'+k),v=r?.[k];card.classList.toggle('offline',!!r&&!online);card.querySelector('.value').textContent=k==='rain_level'?(v==null?'Sin datos':RAIN[v]??'—'):fmt(v,1);card.querySelector('.updated-time').textContent=r&&v!=null?(online?`Actualizado ${when(stamp(r))}`:`Última lectura ${when(stamp(r))} · sin conexión`):'Sin lectura válida';card.querySelector('.trend').textContent=k==='light_pct'&&r?.light!=null?`ADC ${r.light} / ${r.adc_max}`:k==='rain_level'?'0 seco · 1 moderado · 2 intenso':'';const box=card.querySelector('.metric-icon');box.innerHTML=icon(k==='rain_level'&&v>0?'rain':ic);box.classList.toggle('wet',k==='rain_level'&&v>0);if(k==='humidity'&&v!=null)box.style.background=`linear-gradient(to top, var(--blue) ${v}%, var(--soft) ${v}%)`;if(k==='light_pct')box.style.opacity=v==null?'1':String(.35+.65*v/100)})}
+// Ilustraciones del héroe (decorativas)
+const CLOUD = (x, y, s, o=1) => `<g transform="translate(${x} ${y}) scale(${s})" opacity="${o}"><path d="M30 70h80a28 28 0 0 0 0-56 40 40 0 0 0-76 10A24 24 0 0 0 30 70z" fill="#fff"/></g>`;
+const SUN = (cx, cy, r) => `<g class="sun-rays" style="transform-origin:${cx}px ${cy}px">${Array.from({length:12}, (_, i) => `<rect x="${cx-3}" y="${cy-r-30}" width="6" height="18" rx="3" fill="#ffe08a" transform="rotate(${i*30} ${cx} ${cy})"/>`).join('')}</g><circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#sg)"/>`;
+const DEFS = '<defs><radialGradient id="sg" cx="40%" cy="35%"><stop offset="0" stop-color="#fff6c9"/><stop offset=".6" stop-color="#ffd24d"/><stop offset="1" stop-color="#ffb020"/></radialGradient></defs>';
+const ART = {
+  sun: `<svg viewBox="0 0 200 200">${DEFS}${SUN(100,100,46)}</svg>`,
+  partly: `<svg viewBox="0 0 200 200">${DEFS}${SUN(118,78,38)}<g class="cloud-float">${CLOUD(18,92,1.15)}</g></svg>`,
+  cloud: `<svg viewBox="0 0 200 200"><g class="cloud-float">${CLOUD(48,46,.95,.55)}${CLOUD(14,82,1.25)}</g></svg>`,
+  rain: `<svg viewBox="0 0 200 200"><g class="cloud-float">${CLOUD(14,40,1.25)}</g>${[40,70,100,130,160].map((x, i) => `<rect class="raindrop" style="animation-delay:${i*.23}s" x="${x}" y="140" width="5" height="18" rx="2.5" fill="#cfe6ff"/>`).join('')}</svg>`,
+};
 
-// ---- Estado en vivo ----
-let live=null,lastOk=null,serverOffset=0;
-async function poll(){try{live=await get('live');lastOk=Date.now();renderLive()}catch(e){renderLive(e)}}
-function renderLive(err){
-  // El latido lo fija el servidor de Firebase: se compara con la hora del navegador, que puede tener desfase.
-  const beatAge=live?.heartbeat?(Date.now()-live.heartbeat)/1000:null;
-  const online=!err&&beatAge!=null&&beatAge<CFG.offlineSeconds&&live.state==='connected'&&!live.demo;
-  const label=err?'Sin acceso a Firebase':!live?'El colector aún no publica datos':live.demo?'Colector en modo demostración (no se publican datos)':beatAge==null||beatAge>=CFG.offlineSeconds?'Colector desconectado':live.state==='connected'?'En línea':live.state==='stale'?'Sin datos recientes del HC-05':live.state==='connecting'?'Colector conectando al HC-05':'HC-05 desconectado';
-  $('connection').textContent=label;$('connection-dot').className='dot '+(online?'connected':err||!live?'':'stale');
-  const r=live?.latest||null;$('platform-label').textContent='Plataforma: '+(PLATFORMS[r?.platform]||'—');
-  $('last-received').textContent=r?`Última lectura · ${new Date(stamp(r)).toLocaleString('es-PE')}`:'Sin mediciones recibidas';
-  renderCards(r,online);
-  const diag=[['Estado del colector',label],['Plataforma',PLATFORMS[r?.platform]||'—'],['Último latido',beatAge==null?'—':`hace ${Math.max(0,Math.round(beatAge))} s`],['Última lectura',r?when(stamp(r)):'—'],['Registros en vista',records.length.toLocaleString('es-PE')],['Consulta',`cada ${CFG.pollSeconds} s`]];
-  $('diagnostics').innerHTML=diag.map(([k,v])=>`<div class="diagnostic"><span>${k}</span><strong>${esc(v)}</strong></div>`).join('');
-  $('system-error').hidden=!err;$('system-error').textContent=err?`${err.message}. Revisa databaseURL en config.js y las reglas de lectura.`:'';
+// ---- Datos ----
+async function get(path, query=''){ const res = await fetch(`${BASE}/${path}.json${query}`, {cache:'no-store'}); if(!res.ok) throw Error(res.status); return res.json(); }
+let live = null, liveErr = null, records = [], state = {range:24, metric:'temp_aht', platform:'all', page:1}, chart = null;
+
+async function poll(){ try { live = await get('live'); liveErr = null; } catch(e) { liveErr = e; } renderLive(); }
+async function loadHistory(){
+  try {
+    const since = Date.now() - state.range*3600e3;
+    const data = await get('history', `?orderBy=%22%24key%22&startAt=%22${since}%22&limitToLast=5000`) || {};
+    records = Object.values(data).filter(r => r && r.ts).sort((a, b) => a.ts - b.ts);
+  } catch(e) { toast('No se pudo cargar el historial'); }
+  renderAll();
+}
+const isOnline = () => !liveErr && live?.heartbeat && (Date.now()-live.heartbeat)/1000 < CFG.offlineSeconds && live.state === 'connected' && !live.demo;
+const view = () => state.platform === 'all' ? records : records.filter(r => r.platform === state.platform);
+
+// ---- Héroe y tarjetas ----
+function renderLive(){
+  const online = isOnline(), r = live?.latest || null;
+  $('live').className = 'live ' + (online ? 'on' : 'off');
+  $('live-text').textContent = online ? 'En vivo' : liveErr ? 'Sin servidor' : 'Sin conexión';
+  const banner = liveErr ? 'No se pudo conectar con el servidor de datos. Reintentando…'
+    : !r ? 'La estación aún no ha enviado mediciones.'
+    : !online ? `La estación no está transmitiendo en este momento. Se muestran los últimos datos recibidos (${ago(stamp(r))}).` : '';
+  $('banner').hidden = !banner; $('banner-text').textContent = banner;
+
+  const light = r?.light_pct, rain = r?.rain_level ?? 0;
+  $('hero-temp').textContent = r?.temp_aht != null ? Math.round(r.temp_aht) : '--';
+  const lightTxt = light == null ? '' : light >= 66 ? 'ambiente luminoso' : light >= 33 ? 'luz moderada' : 'poca luz';
+  $('hero-condition').textContent = r ? (rain > 0 ? RAIN[rain] : `Sin lluvia${lightTxt ? ' · ' + lightTxt : ''}`) : 'Esperando datos de la estación';
+  const art = rain > 0 ? 'rain' : light == null ? 'cloud' : light >= 66 ? 'sun' : light >= 33 ? 'partly' : 'cloud';
+  if ($('hero-art').dataset.k !== art) { $('hero-art').innerHTML = ART[art]; $('hero-art').dataset.k = art; }
+  $('hero').classList.toggle('rain', rain > 0); $('hero').classList.toggle('dim', rain === 0 && light != null && light < 33);
+  $('hero-platform').textContent = r?.platform ? `Medido por ${PLAT[r.platform]}` : 'Sin plataforma activa';
+  $('hero-dot').style.background = r?.platform ? css(r.platform === 'psoc5lp' ? '--psoc' : '--avr') : '#fff';
+  $('hero-updated').textContent = r ? `Actualizado ${ago(stamp(r))}` : '';
+
+  const tile = (id, val, sub, meter) => { const t = $(id); t.classList.toggle('offline', !!r && !online); t.querySelector('.v').textContent = val; t.querySelector('.s').innerHTML = sub; if (meter != null) t.querySelector('.meter i').style.width = Math.max(0, Math.min(100, meter)) + '%'; };
+  const hum = r?.humidity;
+  tile('t-hum', num(hum, 0), hum == null ? 'Humedad relativa del aire' : hum > 70 ? 'Ambiente húmedo' : hum >= 40 ? 'Nivel confortable' : 'Ambiente seco', hum ?? 0);
+  tile('t-pres', num(r?.pressure, 1), presTrend(r));
+  tile('t-light', num(light, 0), light == null ? 'Nivel de luz ambiental' : `Nivel ${light >= 66 ? 'alto' : light >= 33 ? 'medio' : 'bajo'}`, light ?? 0);
+  const rt = $('t-rain'); rt.querySelector('.v').innerHTML = r ? `<span class="rain-badge lvl${rain}">${RAIN[rain]}</span>` : '--';
+  rt.classList.toggle('offline', !!r && !online);
+  renderPlatforms();
+}
+function presTrend(r){
+  if (r?.pressure == null) return 'Presión atmosférica';
+  const ref = records.filter(x => x.platform === r.platform && x.pressure != null && stamp(r) - x.ts >= 50*60e3).at(-1);
+  if (!ref) return 'Presión atmosférica';
+  const d = r.pressure - ref.pressure;
+  return Math.abs(d) < .1 ? 'Estable en la última hora' : `<span class="${d > 0 ? 'trend-up' : 'trend-down'}">${d > 0 ? '▲' : '▼'} ${num(Math.abs(d), 1)} hPa</span> en la última hora`;
+}
+
+// ---- Plataformas ----
+function renderPlatforms(){
+  Object.keys(PLAT).forEach(p => {
+    const el = $('p-' + p), rows = records.filter(r => r.platform === p), temps = rows.map(r => r.temp_aht).filter(v => v != null);
+    el.querySelector('.n').textContent = rows.length.toLocaleString('es-PE');
+    el.querySelector('.t').textContent = temps.length ? num(temps.reduce((a, b) => a + b, 0) / temps.length, 1) + ' °C' : '--';
+    const last = live?.latest?.platform === p ? stamp(live.latest) : rows.at(-1)?.ts;
+    el.querySelector('.l').textContent = last ? (Date.now() - last < 120e3 ? 'Ahora' : ago(last)) : '--';
+    el.querySelector('.badge-live').hidden = !(isOnline() && live?.platform === p);
+  });
+}
+
+// ---- Gráfica ----
+const crosshair = {id:'crosshair', afterDraw(c){ const a = c.tooltip?.getActiveElements?.(); if (!a?.length) return; const x = a[0].element.x, {top, bottom} = c.chartArea, g = c.ctx; g.save(); g.strokeStyle = css('--ink-3'); g.globalAlpha = .5; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(x, top); g.lineTo(x, bottom); g.stroke(); g.restore(); }};
+function renderChart(){
+  if (typeof Chart === 'undefined') return;
+  const m = METRICS[state.metric], rows = view(), vals = rows.map(r => r[state.metric]).filter(v => v != null);
+  $('chart-title').textContent = `${m.name} promedio del periodo`;
+  $('chart-big').innerHTML = vals.length ? `${num(vals.reduce((a, b) => a + b, 0) / vals.length, m.d)}<small>${m.unit} · mín ${num(Math.min(...vals), m.d)} · máx ${num(Math.max(...vals), m.d)}</small>` : '--';
+  $('chart-empty').hidden = vals.length > 0;
+  const present = Object.keys(PLAT).filter(p => rows.some(r => r.platform === p && r[state.metric] != null));
+  $('legend').innerHTML = present.map(p => `<span><i style="background:var(${p === 'psoc5lp' ? '--psoc' : '--avr'})"></i>${PLAT[p]}</span>`).join('');
+  const ink3 = css('--ink-3'), grid = css('--grid');
+  const datasets = present.map(p => {
+    const color = css(p === 'psoc5lp' ? '--psoc' : '--avr');
+    return {label:PLAT[p], data:rows.map(r => r.platform === p ? r[state.metric] ?? null : null), borderColor:color, borderWidth:2, tension:.35, spanGaps:false,
+      pointRadius:rows.length < 30 ? 3 : 0, pointHoverRadius:5, pointBackgroundColor:color, pointBorderColor:css('--card'), pointBorderWidth:2, pointHitRadius:12, fill:present.length > 1 ? false : 'origin',
+      backgroundColor:ctx => { const a = ctx.chart.chartArea; if (!a) return 'transparent'; const g = ctx.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom); g.addColorStop(0, color + '40'); g.addColorStop(1, color + '00'); return g; }};
+  });
+  chart?.destroy();
+  chart = new Chart($('chart'), {type:'line', data:{labels:rows.map(r => r.ts), datasets}, plugins:[crosshair],
+    options:{responsive:true, maintainAspectRatio:false, animation:{duration:400}, interaction:{mode:'index', intersect:false},
+      plugins:{legend:{display:false}, tooltip:{backgroundColor:css('--card'), titleColor:css('--ink'), bodyColor:css('--ink-2'), borderColor:css('--border'), borderWidth:1, padding:12, cornerRadius:12, boxPadding:6, usePointStyle:true,
+        filter:i => i.raw != null, callbacks:{title:i => new Date(+i[0].label).toLocaleString('es-PE', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}), label:i => ` ${i.dataset.label}: ${num(i.raw, m.d)} ${m.unit}`}}},
+      scales:{x:{grid:{display:false}, border:{display:false}, ticks:{color:ink3, maxTicksLimit:6, maxRotation:0, font:{size:11}, callback(v){ const d = new Date(+this.getLabelForValue(v)); return state.range > 24 ? d.toLocaleDateString('es-PE', {day:'numeric', month:'short'}) : clock(d); }}},
+        y:{grace:'10%', min:['humidity', 'light_pct'].includes(state.metric) ? 0 : undefined, max:['humidity', 'light_pct'].includes(state.metric) ? 100 : undefined, border:{display:false}, grid:{color:grid}, ticks:{color:ink3, maxTicksLimit:5, font:{size:11}}}}}});
 }
 
 // ---- Historial ----
-let records=[],page=1,charts={};
-const filtered=()=>$('platform').value==='all'?records:records.filter(r=>r.platform===$('platform').value);
-async function loadHistory(){try{const since=Date.now()-Number($('range').value)*3600e3;const data=await get('history',`?orderBy=%22%24key%22&startAt=%22${since}%22&limitToLast=5000`)||{};records=Object.values(data).filter(r=>r&&r.ts).sort((a,b)=>a.ts-b.ts);page=1;renderHistory()}catch(e){toast('No se pudo leer el historial: '+e.message)}}
-function renderHistory(){const rows=filtered().slice().reverse(),total=rows.length,view=rows.slice((page-1)*25,page*25);
-  $('rows').innerHTML=view.length?view.map(r=>`<tr><td>${esc(new Date(r.ts).toLocaleDateString('es-PE'))}<small>${when(r.ts)}</small></td><td><span class="platform-chip">${esc(PLATFORMS[r.platform]||r.platform)}</span></td>${['temp_aht','temp_bmp','temp_avg','humidity','pressure'].map(k=>`<td>${fmt(r[k],1)}</td>`).join('')}<td>${r.light==null?'—':`${fmt(r.light_pct,1)}<small>ADC ${r.light}</small>`}</td><td>${esc(RAIN[r.rain_level]??'—')}</td></tr>`).join(''):'<tr><td colspan="9" class="empty">No hay mediciones en este intervalo.</td></tr>';
-  $('page-info').textContent=total?`${(page-1)*25+1}–${Math.min(page*25,total)} de ${total} registros`:'0 registros';$('prev').disabled=page<=1;$('next').disabled=page*25>=total;drawCharts(filtered())}
-const chartSpecs=[['temp_aht','Temperatura AHT20','°C'],['humidity','Humedad relativa','%'],['pressure','Presión atmosférica','hPa'],['light_pct','Intensidad de luz','% relativo · no lux'],['rain_level','Estado de lluvia','0 seco · 1 moderado · 2 intenso']];
-$('chart-grid').innerHTML=chartSpecs.map(([k,l,u])=>`<article class="chart-panel"><div class="chart-heading"><h3>${l}</h3><span>${u}</span></div><div class="chart-body"><canvas id="chart-${k}" role="img" aria-label="Histórico de ${l}"></canvas><div id="empty-${k}" class="chart-empty"><strong>Sin mediciones</strong><span>No hay registros en el intervalo</span></div></div></article>`).join('');
-function drawCharts(rows){if(typeof Chart==='undefined')return;const css=getComputedStyle(document.documentElement),muted=css.getPropertyValue('--muted').trim(),grid=css.getPropertyValue('--grid').trim();const present=Object.keys(PLATFORMS).filter(p=>rows.some(r=>r.platform===p));
-  chartSpecs.forEach(([k,,u])=>{charts[k]?.destroy();$('empty-'+k).hidden=rows.some(r=>r[k]!=null);
-    // Una serie por plataforma: las lecturas no son simultáneas, así que los huecos se dejan visibles.
-    const datasets=present.map(p=>({label:PLATFORMS[p],data:rows.map(r=>r.platform===p?r[k]??null:null),borderColor:COLORS[p],backgroundColor:COLORS[p]+'18',fill:false,stepped:k==='rain_level',tension:.25,pointRadius:rows.length<40?2:0,pointHitRadius:10,borderWidth:2,spanGaps:false}));
-    charts[k]=new Chart($('chart-'+k),{type:'line',data:{labels:rows.map(r=>r.ts),datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:present.length>1,position:'bottom',labels:{color:muted,boxWidth:12,font:{size:9}}},tooltip:{callbacks:{title:i=>new Date(+i[0].label).toLocaleString('es-PE'),label:i=>i.raw==null?null:`${i.dataset.label}: ${k==='rain_level'?RAIN[i.raw]:i.raw} ${k==='rain_level'?'':u}`}}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:muted,maxTicksLimit:6,maxRotation:0,font:{size:9},callback:function(v){return new Date(+this.getLabelForValue(v)).toLocaleString('es-PE',{hour:'2-digit',minute:'2-digit',...($('range').value==='168'?{day:'2-digit',month:'short'}:{})})}}},y:{min:['rain_level','humidity','light_pct'].includes(k)?0:undefined,max:k==='rain_level'?2:['humidity','light_pct'].includes(k)?100:undefined,border:{display:false},grid:{color:grid},ticks:{color:muted,maxTicksLimit:5,precision:k==='rain_level'?0:undefined,font:{size:9}}}}}})})}
-
-// ---- Exportación CSV (en el navegador) ----
-$('export').onclick=()=>{const cols=['timestamp','platform','temp_aht','temp_bmp','temp_avg','humidity','pressure','light','adc_max','light_pct','rain_level','rain_adc'];const lines=[cols.join(',')].concat(filtered().map(r=>cols.map(c=>r[c]??'').join(',')));const url=URL.createObjectURL(new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`meteorologia-remoto-${$('platform').value}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(`CSV exportado · ${filtered().length} registros`)};
+function renderTable(){
+  const rows = view().slice().reverse(), total = rows.length, pages = Math.max(1, Math.ceil(total / 10));
+  state.page = Math.min(state.page, pages);
+  const part = rows.slice((state.page - 1) * 10, state.page * 10);
+  $('rows').innerHTML = part.length ? part.map(r => `<tr>
+    <td>${esc(new Date(r.ts).toLocaleDateString('es-PE', {day:'numeric', month:'short'}))}<small>${clock(r.ts)}</small></td>
+    <td><span class="pdot"><i style="background:var(${r.platform === 'psoc5lp' ? '--psoc' : '--avr'})"></i>${esc(PLAT[r.platform] || r.platform)}</span></td>
+    <td class="num">${cell(r.temp_aht, 1, '°C')}</td><td class="num">${cell(r.humidity, 0, '%')}</td><td class="num">${cell(r.pressure, 1, 'hPa')}</td><td class="num">${cell(r.light_pct, 0, '%')}</td>
+    <td><span class="rain-badge lvl${r.rain_level ?? 0}">${RAIN[r.rain_level ?? 0]}</span></td></tr>`).join('')
+    : '<tr><td colspan="7" style="text-align:center;color:var(--ink-3);padding:36px">No hay mediciones en este periodo</td></tr>';
+  $('page-info').textContent = total ? `${(state.page - 1) * 10 + 1}–${Math.min(state.page * 10, total)} de ${total.toLocaleString('es-PE')} registros` : '';
+  $('prev').disabled = state.page <= 1; $('next').disabled = state.page >= pages;
+}
+function renderHeroRange(){
+  const temps = records.map(r => r.temp_aht).filter(v => v != null);
+  $('hero-max').textContent = temps.length ? Math.round(Math.max(...temps)) + '°' : '--';
+  $('hero-min').textContent = temps.length ? Math.round(Math.min(...temps)) + '°' : '--';
+  $('hero-range-label').textContent = {1:'última hora', 6:'últimas 6 h', 24:'últimas 24 h', 168:'últimos 7 días'}[state.range];
+}
+function renderAll(){ renderHeroRange(); renderChart(); renderTable(); renderLive(); }
 
 // ---- Controles ----
-function updateTheme(){const dark=document.documentElement.dataset.theme==='dark';$('theme').innerHTML=icon(dark?'sun':'moon');drawCharts(filtered())}
-$('theme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;try{localStorage.setItem('weather-theme',t)}catch(e){}updateTheme()};
-$('range').onchange=loadHistory;$('refresh').onclick=loadHistory;$('platform').onchange=()=>{page=1;renderHistory()};
-$('prev').onclick=()=>{if(page>1){page--;renderHistory()}};$('next').onclick=()=>{if(page*25<filtered().length){page++;renderHistory()}};
-document.querySelectorAll('nav a').forEach(a=>a.onclick=()=>{document.querySelectorAll('nav a').forEach(x=>x.classList.remove('active'));a.classList.add('active')});
-setInterval(()=>$('clock').textContent=new Date().toLocaleString('es-PE',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}),1000);
+function seg(id, key, after){ $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); state[key] = key === 'range' ? +b.dataset.v : b.dataset.v; state.page = 1; after(); }); }
+seg('range', 'range', loadHistory); seg('metric', 'metric', renderChart); seg('platform', 'platform', () => { renderChart(); renderTable(); });
+$('prev').onclick = () => { state.page--; renderTable(); }; $('next').onclick = () => { state.page++; renderTable(); };
+$('export').onclick = () => {
+  const cols = [['timestamp','Fecha y hora'],['platform','Plataforma'],['temp_aht','Temperatura AHT20 (°C)'],['temp_bmp','Temperatura BMP280 (°C)'],['humidity','Humedad (%)'],['pressure','Presión (hPa)'],['light_pct','Luz relativa (%)'],['light','Luz ADC'],['adc_max','ADC máximo'],['rain_level','Lluvia (0/1/2)']];
+  const lines = [cols.map(c => c[1]).join(',')].concat(view().map(r => cols.map(([k]) => k === 'timestamp' ? new Date(r.ts).toISOString() : k === 'platform' ? PLAT[r.platform] || r.platform : r[k] ?? '').join(',')));
+  const url = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'}));
+  const a = document.createElement('a'); a.href = url; a.download = `estacion-utec-${state.platform}-${state.range}h.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`CSV descargado · ${view().length} registros`);
+};
+const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+function paintTheme(){ $('theme').innerHTML = icon(isDark() ? 'sun' : 'moon'); $('theme').setAttribute('aria-label', isDark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'); renderAll(); }
+$('theme').onclick = () => { const t = isDark() ? 'light' : 'dark'; document.documentElement.dataset.theme = t; try { localStorage.setItem('weather-theme', t); } catch(e) {} paintTheme(); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', paintTheme);
 
-if(!CFG.databaseURL){
-  document.querySelector('main').insertAdjacentHTML('afterbegin','<div class="panel setup"><h2>Falta configurar Firebase</h2><p>Edita <code>docs/config.js</code> y completa <code>databaseURL</code> con la URL de tu Realtime Database. Ver README, sección «Visualización remota».</p></div>');
-  $('connection').textContent='Sin configurar';
-}else{
-  $('poll-label').textContent=`Actualización automática · ${CFG.pollSeconds} s`;
-  updateTheme();poll();loadHistory();setInterval(poll,CFG.pollSeconds*1000);setInterval(loadHistory,60000);
+if (!CFG.databaseURL) {
+  $('hero').insertAdjacentHTML('afterend', '<div class="card setup"><h2>Falta configurar la fuente de datos</h2><p>Completa <code>databaseURL</code> en <code>docs/config.js</code>.</p></div>');
+} else {
+  paintTheme(); poll(); loadHistory();
+  setInterval(poll, CFG.pollSeconds * 1000); setInterval(loadHistory, 60000); setInterval(() => { renderLive(); }, 15000);
 }
