@@ -167,10 +167,18 @@ class Receiver:
                         self.protocol = SensorProtocol()
                         self.cycle = None
                     buffer = b''
+                    last_bytes = time.monotonic()
+                    # En Windows, el COM de Bluetooth SPP sigue "abierto" aunque el HC-05 se apague o
+                    # se cambie de plataforma; sin error no habría reconexión. Si no llega ningún byte
+                    # en este tiempo, se cierra y se vuelve a abrir el puerto.
+                    silence = max(10, 2 * cfg['stale_seconds'])
                     while not self.changed.is_set() and not self.stop_event.is_set():
                         chunk = port.read_until(b'\n', 256)
                         if not chunk:
+                            if time.monotonic() - last_bytes > silence:
+                                raise TimeoutError(f'Sin datos durante {silence} s; reabriendo puerto')
                             continue
+                        last_bytes = time.monotonic()
                         buffer += chunk
                         if len(buffer) > 1024:
                             buffer = b''
